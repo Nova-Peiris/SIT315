@@ -1,0 +1,26 @@
+void setup() {
+  pinMode(2, INPUT);
+  pinMode(13, OUTPUT);
+  Serial.begin(9600); // Initialize Serial communication
+}
+
+void loop() {
+  // Sense: Read the motion sensor value
+  int motionValue = digitalRead(2);
+
+  // Think: Update the LED status based on the motion sensor value
+  if (motionValue == HIGH) {
+    digitalWrite(13, HIGH); // Turn on the LED
+  } else {
+    digitalWrite(13, LOW);  // Turn off the LED
+  }
+
+  // Act: Print the sensor input and LED output to the Serial Monitor
+  Serial.print("Motion Sensor Value: ");
+  Serial.print(motionValue);
+  Serial.print(" | LED Status: ");
+  Serial.println(digitalRead(13));
+
+  // Add a small delay to avoid rapid changes in readings
+  delay(100);
+}
