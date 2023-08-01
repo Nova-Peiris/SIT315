@@ -1,0 +1,59 @@
+const int motionSensorPin = 2;
+const int ultrasonicTrigPin = 4;
+const int ultrasonicEchoPin = 5;
+const int ledPin = 13;
+
+volatile int motionValue = LOW; // Volatile variable to store motion sensor value
+volatile int ultrasonicValue = LOW; // Volatile variable to store ultrasonic sensor value
+
+void setup() {
+  pinMode(motionSensorPin, INPUT);
+  pinMode(ultrasonicTrigPin, OUTPUT);
+  pinMode(ultrasonicEchoPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+  Serial.begin(9600); // Initialize Serial communication
+
+  // Attach interrupt to the motion sensor pin with the function motionSensorISR
+  attachInterrupt(digitalPinToInterrupt(motionSensorPin), motionSensorISR, CHANGE);
+}
+
+void loop() {
+  // Your main loop can remain empty or handle other tasks that don't need interrupts
+  // The LED status will be updated automatically through the interrupt routine.
+}
+
+// Interrupt Service Routine (ISR) to handle changes in motion sensor value
+void motionSensorISR() {
+  motionValue = digitalRead(motionSensorPin);
+  updateLEDStatus();
+}
+
+// Function to update LED status based on both motion sensor and ultrasonic sensor values
+void updateLEDStatus() {
+  // Trigger ultrasonic sensor to get a distance reading
+  digitalWrite(ultrasonicTrigPin, LOW);
+  delayMicroseconds(10);
+  digitalWrite(ultrasonicTrigPin, HIGH);
+  delayMicroseconds(30);
+  digitalWrite(ultrasonicTrigPin, LOW);
+  
+  // Read the ultrasonic sensor value (duration) and calculate distance in cm
+  long duration = pulseIn(ultrasonicEchoPin, HIGH);
+  int distance = duration * 0.034 / 2; // Speed of sound in air is approximately 34 cm/ms
+
+  // Check if both motion and ultrasonic sensors detect motion (distance less than a certain threshold)
+  if (motionValue == HIGH && distance < 100) { // Adjust the distance threshold as needed
+    digitalWrite(ledPin, HIGH); // Turn on the LED
+  } else {
+    digitalWrite(ledPin, LOW);  // Turn off the LED
+  }
+
+  // Print the sensor inputs, ultrasonic distance, and LED output to the Serial Monitor
+  Serial.print("Motion Sensor Value: ");
+  Serial.print(motionValue);
+  Serial.print(" | Ultrasonic Distance (cm): ");
+  Serial.print(distance);
+  Serial.print(" | LED Status: ");
+  Serial.println(digitalRead(ledPin));
+}
+
