@@ -1,0 +1,92 @@
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+const int motionSensorPin = 2;
+const int ultrasonicTrigPin = 4;
+const int ultrasonicEchoPin = 5;
+const int pushButtonPin = 7; // Connect the push button to this pin
+const int ledPin = 13; // Connect the LED to this pin
+
+volatile int motionValue = LOW; // Volatile variable to store motion sensor value
+volatile int ultrasonicValue = LOW; // Volatile variable to store ultrasonic sensor value
+volatile int pushButtonValue = HIGH; // Volatile variable to store push button value
+volatile bool allSensorsDetected = false; // Volatile variable to store system status
+
+void setup() {
+  pinMode(motionSensorPin, INPUT);
+  pinMode(ultrasonicTrigPin, OUTPUT);
+  pinMode(ultrasonicEchoPin, INPUT);
+  pinMode(pushButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for push button
+  pinMode(ledPin, OUTPUT);
+  Serial.begin(9600); // Initialize Serial communication
+
+  // Attach interrupt to the motion sensor pin with the function motionSensorISR
+  attachInterrupt(digitalPinToInterrupt(motionSensorPin), motionSensorISR, CHANGE);
+
+  // Enable Pin Change Interrupts for the push button
+  PCICR |= (1 << PCIE2);  // Enable PCINT23-16 interrupt
+  PCMSK2 |= (1 << PCINT23); // Enable PCINT23 (corresponding to pushButtonPin)
+
+  // Set up Timer2 for timer interrupt at 1Hz
+  TCCR2A = 0;     // Set entire TCCR2A register to 0
+  TCCR2B = 0;     // Set entire TCCR2B register to 0
+  TCNT2 = 0;      // Initialize counter value to 0
+  OCR2A = 124;    // Set compare match register for 1kHz interrupt at 16MHz/128/125
+  TCCR2A |= (1 << WGM21);  // Turn on CTC mode
+  TCCR2B |= (1 << CS22) | (1 << CS20); // Set CS22 and CS20 bits for 128 prescaler
+  TIMSK2 |= (1 << OCIE2A); // Enable Timer2 compare match A interrupt
+}
+
+void loop() {
+  // Your main loop can remain empty or handle other tasks that don't need interrupts
+}
+
+// Interrupt Service Routine (ISR) to handle changes in motion sensor value
+void motionSensorISR() {
+  motionValue = digitalRead(motionSensorPin);
+  updateSystemStatus();
+}
+
+// PCINT2 Interrupt Service Routine to handle changes in push button value
+ISR(PCINT2_vect) {
+  pushButtonValue = digitalRead(pushButtonPin);
+  updateSystemStatus();
+}
+
+// Timer2 compare match A interrupt handler
+ISR(TIMER2_COMPA_vect) {
+  // This interrupt will be triggered every second (1Hz)
+  // You can perform any periodic tasks here, such as reading sensor data and sending it somewhere.
+  // For now, we'll just toggle the LED to demonstrate the timer interrupt.
+
+  digitalWrite(ledPin, allSensorsDetected); // Turn on the LED if all sensors are detected
+}
+
+// Function to update system status based on all sensor values
+void updateSystemStatus() {
+  // Trigger ultrasonic sensor to get a distance reading
+  digitalWrite(ultrasonicTrigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(ultrasonicTrigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(ultrasonicTrigPin, LOW);
+  
+  // Read the ultrasonic sensor value (duration) and calculate distance in cm
+  long duration = pulseIn(ultrasonicEchoPin, HIGH);
+  int distance = duration * 0.034 / 2; // Speed of sound in air is approximately 34 cm/ms
+
+  // Update the system status based on all sensor values
+  allSensorsDetected = (motionValue == HIGH && distance < 100 && pushButtonValue == HIGH); // Adjust the distance threshold as needed
+
+  // Print the sensor inputs, ultrasonic distance, system status, and LED output to the Serial Monitor
+  Serial.print("Motion Sensor Value: ");
+  Serial.print(motionValue);
+  Serial.print(" | Ultrasonic Distance (cm): ");
+  Serial.print(distance);
+  Serial.print(" | Push Button Value: ");
+  Serial.print(pushButtonValue);
+  Serial.print(" | System Status: ");
+  Serial.print(allSensorsDetected ? "All Sensors Detected" : "Not All Sensors Detected");
+  Serial.print(" | LED Status: ");
+  Serial.println(digitalRead(ledPin));
+}
