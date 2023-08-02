@@ -1,25 +1,42 @@
 const int motionSensorPin = 2;
 const int ultrasonicTrigPin = 4;
 const int ultrasonicEchoPin = 5;
+const int photoresistorPin = 6; // Photoresistor connected to Digital Pin 6
 const int ledPin = 13;
 
 volatile int motionValue = LOW; // Volatile variable to store motion sensor value
 volatile int ultrasonicValue = LOW; // Volatile variable to store ultrasonic sensor value
+volatile int photoresistorValue = HIGH; // Volatile variable to store photoresistor value
 
 void setup() {
   pinMode(motionSensorPin, INPUT);
   pinMode(ultrasonicTrigPin, OUTPUT);
   pinMode(ultrasonicEchoPin, INPUT);
+  pinMode(photoresistorPin, INPUT_PULLUP); // Use internal pull-up resistor for photoresistor
   pinMode(ledPin, OUTPUT);
   Serial.begin(9600); // Initialize Serial communication
 
   // Attach interrupt to the motion sensor pin with the function motionSensorISR
   attachInterrupt(digitalPinToInterrupt(motionSensorPin), motionSensorISR, CHANGE);
+
+  // Enable Pin Change Interrupts for the photoresistor pin
+  PCICR |= (1 << PCIE2);  // Enable PCINT23-16 interrupt
+  PCMSK2 |= (1 << PCINT22); // Enable PCINT22 (corresponding to photoresistorPin)
+
+  // Trigger Timer1 interrupt to read the ultrasonic sensor value every 20ms
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1 = 0;
+  OCR1A = 32000; // 20ms at 16MHz with 64 prescaler
+  TCCR1B |= (1 << WGM12) | (1 << CS11) | (1 << CS10); // CTC mode, 64 prescaler
+  TIMSK1 |= (1 << OCIE1A); // Enable Timer1 compare match A interrupt
+
+  // Enable global interrupts
+  sei();
 }
 
 void loop() {
-  // Your main loop can remain empty or handle other tasks that don't need interrupts
-  // The LED status will be updated automatically through the interrupt routine.
+  // Your main loop can remain empty since all actions are handled by interrupts
 }
 
 // Interrupt Service Routine (ISR) to handle changes in motion sensor value
@@ -28,32 +45,43 @@ void motionSensorISR() {
   updateLEDStatus();
 }
 
-// Function to update LED status based on both motion sensor and ultrasonic sensor values
-void updateLEDStatus() {
+// PCINT2 Interrupt Service Routine to handle changes in photoresistor value
+ISR(PCINT2_vect) {
+  photoresistorValue = digitalRead(photoresistorPin);
+  updateLEDStatus();
+}
+
+// Timer1 compare match A interrupt handler for ultrasonic sensor trigger
+ISR(TIMER1_COMPA_vect) {
   // Trigger ultrasonic sensor to get a distance reading
   digitalWrite(ultrasonicTrigPin, LOW);
   delayMicroseconds(10);
   digitalWrite(ultrasonicTrigPin, HIGH);
   delayMicroseconds(30);
   digitalWrite(ultrasonicTrigPin, LOW);
-  
+
   // Read the ultrasonic sensor value (duration) and calculate distance in cm
   long duration = pulseIn(ultrasonicEchoPin, HIGH);
-  int distance = duration * 0.034 / 2; // Speed of sound in air is approximately 34 cm/ms
+  ultrasonicValue = duration * 0.034 / 2; // Speed of sound in air is approximately 34 cm/ms
+}
 
-  // Check if both motion and ultrasonic sensors detect motion (distance less than a certain threshold)
-  if (motionValue == HIGH && distance < 100) { // Adjust the distance threshold as needed
+// Function to update LED status based on all sensor values
+void updateLEDStatus() {
+  // Check if all sensors detect motion (HIGH), the photoresistor value is below a certain threshold (dark enough),
+  // and the ultrasonic distance is less than a certain threshold
+  if (motionValue == HIGH && photoresistorValue == HIGH && ultrasonicValue < 100) {
     digitalWrite(ledPin, HIGH); // Turn on the LED
   } else {
     digitalWrite(ledPin, LOW);  // Turn off the LED
   }
 
-  // Print the sensor inputs, ultrasonic distance, and LED output to the Serial Monitor
+  // Print the sensor inputs, ultrasonic distance, photoresistor value, and LED output to the Serial Monitor
   Serial.print("Motion Sensor Value: ");
   Serial.print(motionValue);
+  Serial.print(" | Photoresistor Value: ");
+  Serial.print(photoresistorValue);
   Serial.print(" | Ultrasonic Distance (cm): ");
-  Serial.print(distance);
+  Serial.print(ultrasonicValue);
   Serial.print(" | LED Status: ");
   Serial.println(digitalRead(ledPin));
 }
-
