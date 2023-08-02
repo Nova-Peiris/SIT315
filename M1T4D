@@ -5,11 +5,13 @@ const int motionSensorPin = 2;
 const int ultrasonicTrigPin = 4;
 const int ultrasonicEchoPin = 5;
 const int pushButtonPin = 7; // Connect the push button to this pin
+const int photoresistorPin = 6; // Connect the photoresistor to this pin
 const int ledPin = 13; // Connect the LED to this pin
 
 volatile int motionValue = LOW; // Volatile variable to store motion sensor value
 volatile int ultrasonicValue = LOW; // Volatile variable to store ultrasonic sensor value
 volatile int pushButtonValue = HIGH; // Volatile variable to store push button value
+volatile int photoresistorValue = HIGH; // Volatile variable to store photoresistor value
 volatile bool allSensorsDetected = false; // Volatile variable to store system status
 
 void setup() {
@@ -17,15 +19,16 @@ void setup() {
   pinMode(ultrasonicTrigPin, OUTPUT);
   pinMode(ultrasonicEchoPin, INPUT);
   pinMode(pushButtonPin, INPUT_PULLUP); // Use internal pull-up resistor for push button
+  pinMode(photoresistorPin, INPUT_PULLUP); // Use internal pull-up resistor for photoresistor
   pinMode(ledPin, OUTPUT);
   Serial.begin(9600); // Initialize Serial communication
 
   // Attach interrupt to the motion sensor pin with the function motionSensorISR
   attachInterrupt(digitalPinToInterrupt(motionSensorPin), motionSensorISR, CHANGE);
 
-  // Enable Pin Change Interrupts for the push button
+  // Enable Pin Change Interrupts for the push button and photoresistor pins
   PCICR |= (1 << PCIE2);  // Enable PCINT23-16 interrupt
-  PCMSK2 |= (1 << PCINT23); // Enable PCINT23 (corresponding to pushButtonPin)
+  PCMSK2 |= (1 << PCINT23) | (1 << PCINT22); // Enable PCINT23 (pushButtonPin) and PCINT22 (photoresistorPin)
 
   // Set up Timer2 for timer interrupt at 1Hz
   TCCR2A = 0;     // Set entire TCCR2A register to 0
@@ -35,6 +38,9 @@ void setup() {
   TCCR2A |= (1 << WGM21);  // Turn on CTC mode
   TCCR2B |= (1 << CS22) | (1 << CS20); // Set CS22 and CS20 bits for 128 prescaler
   TIMSK2 |= (1 << OCIE2A); // Enable Timer2 compare match A interrupt
+
+  // Enable global interrupts
+  sei();
 }
 
 void loop() {
@@ -47,9 +53,10 @@ void motionSensorISR() {
   updateSystemStatus();
 }
 
-// PCINT2 Interrupt Service Routine to handle changes in push button value
+// PCINT2 Interrupt Service Routine to handle changes in push button and photoresistor values
 ISR(PCINT2_vect) {
   pushButtonValue = digitalRead(pushButtonPin);
+  photoresistorValue = digitalRead(photoresistorPin);
   updateSystemStatus();
 }
 
@@ -70,13 +77,13 @@ void updateSystemStatus() {
   digitalWrite(ultrasonicTrigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(ultrasonicTrigPin, LOW);
-  
+
   // Read the ultrasonic sensor value (duration) and calculate distance in cm
   long duration = pulseIn(ultrasonicEchoPin, HIGH);
   int distance = duration * 0.034 / 2; // Speed of sound in air is approximately 34 cm/ms
 
-  // Update the system status based on all sensor values
-  allSensorsDetected = (motionValue == HIGH && distance < 100 && pushButtonValue == HIGH); // Adjust the distance threshold as needed
+  // Update the system status based on all sensor values, including the photoresistor
+  allSensorsDetected = (motionValue == HIGH && distance < 100 && pushButtonValue == HIGH && photoresistorValue == HIGH); // Adjust the distance threshold as needed
 
   // Print the sensor inputs, ultrasonic distance, system status, and LED output to the Serial Monitor
   Serial.print("Motion Sensor Value: ");
@@ -85,6 +92,8 @@ void updateSystemStatus() {
   Serial.print(distance);
   Serial.print(" | Push Button Value: ");
   Serial.print(pushButtonValue);
+  Serial.print(" | Photoresistor Value: ");
+  Serial.print(photoresistorValue);
   Serial.print(" | System Status: ");
   Serial.print(allSensorsDetected ? "All Sensors Detected" : "Not All Sensors Detected");
   Serial.print(" | LED Status: ");
